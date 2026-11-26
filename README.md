@@ -99,18 +99,49 @@ Most likely compile fixes if any: `DustParticleOptions(Vector3f, float)` in Fx.j
 Most likely compile fixes if any: `Item#getUseDuration(ItemStack, LivingEntity)` in StaminaPotionItem,
 `ArmorMaterial` constructor in ModArmor, `LivingEntityRenderer#scale` in VillainRenderer.
 
-## v0.4 additions: animations
+## v0.4 additions: real animations
 
-- **Custom particle system**: 33 sprite particles (lightning bolts, sparks, starburst flashes, feathers, tape, ice
-  shards, wisps, drops, sound-wave rings...) defined in `ModParticles`, drawn by `StyledParticle`
-  (tint, glow, fade, spin, flutter, trails). Add a new one by adding a line to `ModParticles.DEFS`, a sprite in
-  `textures/particle/` and `particles/<id>.json`.
-- **Animation toolkit** (`Anim`): projectiles that fly, strands that extend, spirals that wrap and tighten, expanding
-  rings, pillars, gather/charge-ups, jagged lightning and trails that follow the player. `QFx` holds the
-  signature effects (MHA explosion, green lightning, wings, feather volleys) and a distinct aura per Quirk.
-- Every one of the 42 abilities has a choreographed animation; the arm swing plays when a Quirk is used.
-  Gameplay numbers are unchanged. Ranged hits (feathers, cannon, acid, tape, whip) now land when the
-  projectile arrives.
+Every ability now plays a **timed client-side animation** instead of a one-tick particle dump.
+The server sends one small `AnimPayload` per ability; the client plays it over several ticks.
+This is smoother, uses far less bandwidth, and means other players see the effects too.
 
-Most likely compile fixes if any: `StyledParticle` (Particle field names: roll/oRoll/random/level),
-`RegisterParticleProvidersEvent#registerSpriteSet`.
+| Quirk | Animations |
+|---|---|
+| One For All | Green lightning arcs along the arm into a punch with air blast, ground ring and cracks; lightning-wrapped leap; crackling Full Cowl aura |
+| Half-Cold Half-Hot | Fire jet that follows your aim; ice spikes erupting in a widening V; half-fire / half-ice nova; split fire/ice aura |
+| Explosion | Palm sparks; staged MHA explosion (white flash, swelling fireball, crackle, shock ring, debris, black smoke, camera shake and screen flash); rocket-blast trail; Howitzer Impact spiral wind-up, then the blast |
+| Hardening | Red steel shards, steel aura, lightning shock |
+| Zero Gravity | Gravity bubble with bubbles rising off targets; meteors streaking down with trails and impacts |
+| Engine | Exhaust and speed lines, blue lightning aura, kick shock rings |
+| Creation | Particles converge to forge the shield and golems (golems now appear when the forging finishes); cannon bolt with iron-chip impact |
+| Invisibility | Shimmer, light streak between you and the target, twinkling dome |
+| Fierce Wings | Flapping wings of glowing bones and feather tips; feather volley where each feather flies to a target; wind gust; updraft |
+| Dark Shadow | Tendril lunges with red eyes; shadow columns erupting from the ground |
+| Black Whip | Whip flies out, wraps or snaps and retracts, dark tendril look; anchor swings |
+| Acid | Arcing acid glob; bubbling puddle that pulses with each damage tick |
+| Earphone Jack | Rings of sound travelling forward with notes; ground ripples and bass-drop shake |
+| Tape | Tape strand flies from your hand and **wraps up the target in a spiral**, cocoon for Tape Cocoon, taut rope for swings |
+
+### How it works
+
+    quirk/FxType         every animation type (ordinal goes over the wire)
+    quirk/Fx.play(...)   server: Fx.play(FxType.X).src(p).a(vec).rgb(0x...).send(p)
+    net/AnimPayload      the packet
+    client/anim/         ClientAnims (manager, camera shake, screen flash), AnimFactory,
+                         AnimsCore / AnimsFire / AnimsMisc (the animations), P (particle helpers),
+                         FxParticle (fully controllable particle)
+    assets/.../particles + textures/particle   glow, spark, feather, tape, puff sprites
+
+To add an animation: add an `FxType`, write an `Anim` subclass (`step()` runs once per tick and returns
+true when done), add one line in `AnimFactory`, and call it from the ability with `Fx.play(...)`.
+
+Gameplay (damage, cooldowns, effects, movement) is unchanged, except that the Howitzer's damage and the
+Iron Guardians' spawn are delayed 8 ticks so they land with the animation.
+The old server-side aura particles were replaced by client auras.
+
+### Likely compile fixes (this version has not been built yet)
+
+* `FxParticle` - protected field names (`quadSize`, `roll`, `alpha`) or `getLightColor` access
+* `ClientModEvents.particles` - the `registerSpriteSet` lambda shape
+* `ClientGameEvents.onCamera` - `ViewportEvent.ComputeCameraAngles` setter names
+* `P.dust` / `P.vanilla` - `ClientLevel.addParticle` overload
